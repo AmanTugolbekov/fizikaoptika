@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Симулятор Преломления Света (с режимами)</title>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      background: #e0f7ff;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+    }
+    canvas {
+      border: 2px solid black;
+      margin-top: 20px;
+    }
+    .controls {
+      margin-top: 10px;
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+    button, input {
+      padding: 5px 10px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .density-inputs {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      margin-left: 20px;
+    }
+    .legend {
+      margin-top: 10px;
+      font-size: 14px;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="canvas" width="800" height="500"></canvas>
+
+<div class="controls">
+  <button onclick="toggleAnimation()">
+    <span id="toggleButtonText">Запустить анимацию</span>
+  </button>
+  <button onclick="switchMode()">
+    <span id="modeButtonText">Режим: Воздух → Вода</span>
+  </button>
+  <div class="density-inputs" id="densityInputs">
+    <label>n₁: <input type="number" id="customN1" step="0.01" value="1.00"></label>
+    <label>n₂: <input type="number" id="customN2" step="0.01" value="1.33"></label>
+  </div>
+</div>
+
+<div class="legend" id="legendText">
+  <strong>Описание:</strong> Верх — <span style="color:#0066cc;">Воздух</span> (n₁ = 1.00), Низ — <span style="color:#0099ff;">Вода</span> (n₂ = 1.33)<br>
+  Красный луч — падающий | Зелёный луч — преломлённый | Синий луч — отражённый
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const densityInputs = document.getElementById('densityInputs');
+const customN1Input = document.getElementById('customN1');
+const customN2Input = document.getElementById('customN2');
+
+let angle = 0;
+let increasing = true;
+let animationRunning = false;
+let animationFrameId = null;
+let mode = 1; // 1 - Воздух в Воду, 2 - Вода в Воздух, 3 - Пользовательский
+
+function toRadians(degrees) {
+  return degrees * Math.PI / 180;
+}
+
+function draw(angleIncidence) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const boundaryY = canvas.height / 2;
+  const startX = canvas.width / 2;
+  const incidentLength = 200;
+
+  let n1, n2;
+  if (mode === 1) {
+    n1 = 1.00; n2 = 1.33;
+  } else if (mode === 2) {
+    n1 = 1.33; n2 = 1.00;
+  } else {
+    n1 = parseFloat(customN1Input.value);
+    n2 = parseFloat(customN2Input.value);
+  }
+
+  // Фоновые цвета
+  ctx.fillStyle = mode === 2 ? '#99ccff' : '#cceeff';
+  ctx.fillRect(0, 0, canvas.width, boundaryY);
+  ctx.fillStyle = mode === 2 ? '#cceeff' : '#99ccff';
+  ctx.fillRect(0, boundaryY, canvas.width, canvas.height - boundaryY);
+
+  // Подписи "Воздух" и "Вода"
+  ctx.fillStyle = 'black';
+  ctx.font = '18px Arial';
+  if (mode === 1) {
+    ctx.fillText('Воздух', canvas.width - 80, 30);
+    ctx.fillText('Вода', canvas.width - 80, canvas.height - 10);
+  } else if (mode === 2) {
+    ctx.fillText('Вода', canvas.width - 80, 30);
+    ctx.fillText('Воздух', canvas.width - 80, canvas.height - 10);
+  }
+
+  ctx.fillStyle = 'black';
+  ctx.font = '20px Arial';
+  ctx.fillText(`n₁ = ${n1.toFixed(2)}`, 10, 30);
+  ctx.fillText(`n₂ = ${n2.toFixed(2)}`, 10, canvas.height - 10);
+
+  ctx.beginPath();
+  ctx.moveTo(0, boundaryY);
+  ctx.lineTo(canvas.width, boundaryY);
+  ctx.strokeStyle = 'black';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const incidentAngleRad = toRadians(angleIncidence);
+  const incidentEndX = startX - incidentLength * Math.sin(incidentAngleRad);
+  const incidentEndY = boundaryY - incidentLength * Math.cos(incidentAngleRad);
+
+  ctx.beginPath();
+  ctx.moveTo(incidentEndX, incidentEndY);
+  ctx.lineTo(startX, boundaryY);
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = 'red';
+  ctx.font = '16px Arial';
+  ctx.fillText('Падающий луч', incidentEndX - 90, incidentEndY - 10);
+
+  let refractionAngleRad = Math.asin((n1 / n2) * Math.sin(incidentAngleRad));
+
+  if (isNaN(refractionAngleRad)) {
+    const reflectedEndX = startX + incidentLength * Math.sin(incidentAngleRad);
+    const reflectedEndY = boundaryY - incidentLength * Math.cos(incidentAngleRad);
+
+    ctx.beginPath();
+    ctx.moveTo(startX, boundaryY);
+    ctx.lineTo(reflectedEndX, reflectedEndY);
+    ctx.strokeStyle = 'blue';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = 'blue';
+    ctx.fillText('Отражённый луч', reflectedEndX + 10, reflectedEndY - 10);
+
+    ctx.fillStyle = 'black';
+    ctx.fillText('Полное внутреннее отражение!', 10, 60);
+  } else {
+    const refractedLength = 200;
+    const refractedEndX = startX + refractedLength * Math.sin(refractionAngleRad);
+    const refractedEndY = boundaryY + refractedLength * Math.cos(refractionAngleRad);
+
+    ctx.beginPath();
+    ctx.moveTo(startX, boundaryY);
+    ctx.lineTo(refractedEndX, refractedEndY);
+    ctx.strokeStyle = 'green';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    ctx.fillStyle = 'green';
+    ctx.fillText('Преломлённый луч', refractedEndX + 10, refractedEndY - 10);
+
+    // Критический угол (только для воды → воздух)
+    if (mode === 2) {
+      const criticalAngle = Math.asin(n2 / n1);
+      const criticalX = startX + 200 * Math.sin(criticalAngle);
+      const criticalY = boundaryY + 200 * Math.cos(criticalAngle);
+
+      ctx.beginPath();
+      ctx.setLineDash([4, 4]);
+      ctx.moveTo(startX, boundaryY);
+      ctx.lineTo(criticalX, criticalY);
+      ctx.strokeStyle = 'gray';
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      ctx.fillStyle = 'black';
+      ctx.fillText('Критический угол', criticalX + 10, criticalY - 5);
+    }
+  }
+
+  ctx.beginPath();
+  ctx.setLineDash([5, 5]);
+  ctx.moveTo(startX, 0);
+  ctx.lineTo(startX, canvas.height);
+  ctx.strokeStyle = 'gray';
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = 'black';
+  ctx.font = '18px Arial';
+  ctx.fillText(`Угол падения: ${angleIncidence.toFixed(1)}°`, 10, 90);
+  ctx.fillText(`Формула: n₁·sin(θ₁) = n₂·sin(θ₂)`, 10, 120);
+}
+
+function animate() {
+  if (!animationRunning) return;
+
+  draw(angle);
+
+  if (increasing) {
+    angle += 0.5;
+    if (angle >= 80) increasing = false;
+  } else {
+    angle -= 0.5;
+    if (angle <= 5) increasing = true;
+  }
+
+  animationFrameId = requestAnimationFrame(animate);
+}
+
+function toggleAnimation() {
+  animationRunning = !animationRunning;
+  document.getElementById('toggleButtonText').textContent = animationRunning ? 'Остановить анимацию' : 'Запустить анимацию';
+  if (animationRunning) animate();
+  else cancelAnimationFrame(animationFrameId);
+}
+
+function switchMode() {
+  mode = (mode % 3) + 1;
+
+  const modeText = document.getElementById('modeButtonText');
+  const legendText = document.getElementById('legendText');
+
+  if (mode === 1) {
+    modeText.textContent = 'Режим: Воздух → Вода';
+    legendText.innerHTML = `<strong>Описание:</strong> Верх — <span style="color:#0066cc;">Воздух</span> (n₁ = 1.00), Низ — <span style="color:#0099ff;">Вода</span> (n₂ = 1.33)<br>Красный луч — падающий | Зелёный луч — преломлённый | Синий луч — отражённый`;
+    densityInputs.style.display = 'none';
+  } else if (mode === 2) {
+    modeText.textContent = 'Режим: Вода → Воздух';
+    legendText.innerHTML = `<strong>Описание:</strong> Верх — <span style="color:#0099ff;">Вода</span> (n₁ = 1.33), Низ — <span style="color:#0066cc;">Воздух</span> (n₂ = 1.00)<br>Красный луч — падающий | Зелёный луч — преломлённый | Синий луч — отражённый`;
+    densityInputs.style.display = 'none';
+  } else {
+    modeText.textContent = 'Режим: Пользовательский';
+    legendText.innerHTML = `<strong>Описание:</strong> Введите значения n₁ и n₂ вручную. Красный луч — падающий | Зелёный луч — преломлённый | Синий луч — отражённый`;
+    densityInputs.style.display = 'flex';
+  }
+
+  draw(angle);
+}
+
+draw(angle);
+</script>
+
+</body>
+</html>
